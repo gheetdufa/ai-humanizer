@@ -176,6 +176,7 @@
   footer { margin-top: 34px; text-align: center; font-size: 12px; color: var(--muted); line-height: 1.6; }
   footer a { color: var(--accent); }
 </style>
+<script src="https://js.puter.com/v2/"></script>
 </head>
 <body>
 <div class="wrap">
@@ -219,6 +220,18 @@
   <div class="controls">
     <div class="row">
       <div class="field">
+        <label for="engine">Engine</label>
+        <select id="engine">
+          <option value="free" selected>Free — best quality (no key)</option>
+          <option value="nologin">Free — no login (no key)</option>
+          <option value="key">Your own Claude key</option>
+        </select>
+      </div>
+      <div class="field">
+        <label for="model">Model</label>
+        <select id="model"></select>
+      </div>
+      <div class="field">
         <label for="strength">Rewrite strength</label>
         <select id="strength">
           <option value="light">Light — fix tells, keep phrasing</option>
@@ -236,14 +249,6 @@
           <option value="academic">Academic (but human)</option>
         </select>
       </div>
-      <div class="field">
-        <label for="model">AI model</label>
-        <select id="model">
-          <option value="claude-opus-4-8" selected>Claude Opus 4.8 — best quality</option>
-          <option value="claude-sonnet-5">Claude Sonnet 5 — fast &amp; cheap</option>
-          <option value="claude-haiku-4-5">Claude Haiku 4.5 — fastest</option>
-        </select>
-      </div>
     </div>
 
     <div class="toggles">
@@ -254,13 +259,13 @@
     </div>
 
     <div class="btns">
-      <button class="act primary" id="humanizeBtn">✨ Humanize with AI</button>
-      <button class="act" id="cleanBtn">⚡ Quick clean (no key)</button>
+      <button class="act primary" id="humanizeBtn">✨ Humanize (free)</button>
+      <button class="act" id="cleanBtn">⚡ Quick clean (offline)</button>
     </div>
     <div class="status" id="status"></div>
 
     <details class="settings" id="keyDetails">
-      <summary>API key &amp; privacy</summary>
+      <summary>API key &amp; privacy · engine notes</summary>
       <div class="key-row">
         <div class="field">
           <label for="apiKey">Anthropic API key</label>
@@ -270,10 +275,15 @@
         <button class="mini" id="forgetKeyBtn">Forget</button>
       </div>
       <p class="note">
-        Your key is stored only in this browser (localStorage) and sent directly from your browser to Anthropic — it never
-        touches any server of mine. Get a key at
+        <b>You do not need a key.</b> The two <b>Free</b> engines cost you nothing:
+        <b>Free — best quality</b> routes through <a href="https://puter.com" target="_blank" rel="noopener">Puter</a>
+        to reach GPT-4o / Claude-class models (a free Puter sign-in may pop up the first time), and it automatically
+        falls back to <b>Free — no login</b> (<a href="https://pollinations.ai" target="_blank" rel="noopener">Pollinations</a>,
+        no account at all) if Puter isn't available. <b>Quick clean</b> needs no network at all.<br/><br/>
+        The <b>Your own Claude key</b> engine is optional — it gives the most consistent quality and bills your own
+        Anthropic account. The key is stored only in this browser (localStorage) and is sent straight to Anthropic; it
+        never touches any server of mine. Get one at
         <a href="https://console.anthropic.com/settings/keys" target="_blank" rel="noopener">console.anthropic.com</a>.
-        The <b>Quick clean</b> button needs no key and runs fully offline.
       </p>
     </details>
   </div>
@@ -284,7 +294,7 @@
   </div>
 
   <footer>
-    Runs entirely in your browser. Nothing you type is uploaded anywhere except (for AI rewrites) straight to Anthropic with your own key.<br/>
+    Free to use — no API key required. Quick clean runs fully offline; AI rewrites go to a free model provider (Puter or Pollinations) or, if you choose, straight to Anthropic with your own key.<br/>
     Built as a static page — bookmark it and it's always here.
   </footer>
 </div>
@@ -608,73 +618,174 @@ function buildUserMessage(text, strength, tone) {
   return `${strengthNote}\n${toneNote}\n\nRewrite the text between the markers. Output only the rewritten text.\n\n<<<TEXT\n${text}\nTEXT>>>`;
 }
 
-async function humanizeAI() {
+const MODELS = {
+  free: [
+    ["gpt-4o-mini", "GPT-4o mini — fast"],
+    ["gpt-4o", "GPT-4o — best free"],
+    ["claude-sonnet-4", "Claude Sonnet 4"],
+  ],
+  nologin: [
+    ["openai-large", "OpenAI large — best"],
+    ["openai", "OpenAI — fast"],
+    ["mistral", "Mistral"],
+  ],
+  key: [
+    ["claude-opus-4-8", "Claude Opus 4.8 — best"],
+    ["claude-sonnet-5", "Claude Sonnet 5 — fast"],
+    ["claude-haiku-4-5", "Claude Haiku 4.5 — fastest"],
+  ],
+};
+const engineSel = $("engine"), modelSel = $("model");
+
+function populateModels() {
+  const list = MODELS[engineSel.value] || MODELS.free;
+  modelSel.innerHTML = "";
+  for (const [val, label] of list) {
+    const o = document.createElement("option");
+    o.value = val; o.textContent = label;
+    modelSel.appendChild(o);
+  }
+}
+(function initEngine(){
+  const saved = localStorage.getItem("hz_engine");
+  if (saved && MODELS[saved]) engineSel.value = saved;
+  populateModels();
+  engineSel.addEventListener("change", () => {
+    localStorage.setItem("hz_engine", engineSel.value);
+    populateModels();
+  });
+})();
+
+// Always run the deterministic cleaner over model output so tells never survive.
+function postProcess(out) {
+  out = stripHidden((out || "").trim());
+  if ($("tQuotes").checked) out = tidy(straighten(out));
+  return out;
+}
+
+// Free engine A: Puter — frontier models, no key. May pop a free sign-in the first time.
+async function runPuter(model, userMsg) {
+  if (typeof puter === "undefined" || !puter.ai || !puter.ai.chat) throw new Error("puter-unavailable");
+  const messages = [
+    { role: "system", content: SYSTEM_PROMPT },
+    { role: "user", content: userMsg },
+  ];
+  const resp = await puter.ai.chat(messages, { model });
+  const text = extractPuterText(resp);
+  if (!text) throw new Error("puter-empty");
+  return text;
+}
+function extractPuterText(resp) {
+  if (!resp) return "";
+  if (typeof resp === "string") return resp;
+  const c = (resp.message && resp.message.content) || resp.content || resp.text;
+  if (typeof c === "string") return c;
+  if (Array.isArray(c)) return c.map(b => (typeof b === "string" ? b : (b.text || ""))).join("");
+  return typeof resp.toString === "function" ? resp.toString() : "";
+}
+
+// Free engine B: Pollinations — no login, no key.
+async function runPollinations(model, userMsg) {
+  const res = await fetch("https://text.pollinations.ai/openai", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({
+      model,
+      messages: [
+        { role: "system", content: SYSTEM_PROMPT },
+        { role: "user", content: userMsg },
+      ],
+    }),
+  });
+  if (!res.ok) throw new Error("Pollinations HTTP " + res.status);
+  const data = await res.json();
+  const out = data && data.choices && data.choices[0] && data.choices[0].message && data.choices[0].message.content;
+  if (!out) throw new Error("Pollinations returned no text.");
+  return out;
+}
+
+// Optional: bring-your-own Anthropic key.
+async function runClaudeKey(model, userMsg) {
+  const key = getKey();
+  if (!key) { const e = new Error("no-key"); e.code = "no-key"; throw e; }
+  const res = await fetch("https://api.anthropic.com/v1/messages", {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+      "x-api-key": key,
+      "anthropic-version": "2023-06-01",
+      "anthropic-dangerous-direct-browser-access": "true",
+    },
+    body: JSON.stringify({
+      model,
+      max_tokens: 8192,
+      system: SYSTEM_PROMPT,
+      messages: [{ role: "user", content: userMsg }],
+    }),
+  });
+  const data = await res.json();
+  if (!res.ok || data.type === "error") {
+    const msg = (data && data.error && data.error.message) || ("HTTP " + res.status);
+    if (res.status === 401) throw new Error("Invalid API key — check it below.");
+    if (res.status === 429) throw new Error("Rate limited — wait a moment and retry.");
+    throw new Error(msg);
+  }
+  if (data.stop_reason === "refusal") throw new Error("The model declined this text. Try Quick clean instead.");
+  const block = (data.content || []).find(b => b.type === "text");
+  const out = block ? block.text.trim() : "";
+  if (!out) throw new Error("Empty response — try again.");
+  return out;
+}
+
+async function humanize() {
   const raw = input.value;
   if (!raw.trim()) { setStatus("Paste some text first.", "err"); return; }
-  const key = getKey();
-  if (!key) {
-    setStatus("Add your Anthropic API key below to use AI rewriting — or use ⚡ Quick clean (no key needed).", "err");
-    $("keyDetails").open = true;
-    $("apiKey").focus();
-    return;
-  }
 
-  // Pre-clean hidden characters so they never survive even if the model keeps them.
-  let text = stripHidden(raw);
-
-  const model = $("model").value;
+  const engine = engineSel.value;
+  const model = modelSel.value;
   const strength = $("strength").value;
   const tone = $("tone").value;
+  const userMsg = buildUserMessage(stripHidden(raw), strength, tone);
+
   const btn = $("humanizeBtn");
   btn.disabled = true;
   const label = btn.innerHTML;
   btn.innerHTML = '<span class="spinner"></span> Humanizing…';
-  setStatus("Sending to " + model + "…");
 
   try {
-    const res = await fetch("https://api.anthropic.com/v1/messages", {
-      method: "POST",
-      headers: {
-        "content-type": "application/json",
-        "x-api-key": key,
-        "anthropic-version": "2023-06-01",
-        "anthropic-dangerous-direct-browser-access": "true",
-      },
-      body: JSON.stringify({
-        model,
-        max_tokens: 8192,
-        system: SYSTEM_PROMPT,
-        messages: [{ role: "user", content: buildUserMessage(text, strength, tone) }],
-      }),
-    });
-
-    const data = await res.json();
-
-    if (!res.ok || data.type === "error") {
-      const msg = (data && data.error && data.error.message) || ("HTTP " + res.status);
-      if (res.status === 401) { setStatus("Invalid API key. Check it below.", "err"); }
-      else if (res.status === 429) { setStatus("Rate limited — wait a moment and try again.", "err"); }
-      else { setStatus("Error: " + msg, "err"); }
-      return;
+    let out, via;
+    if (engine === "key") {
+      setStatus("Rewriting with your Claude key (" + model + ")…");
+      out = await runClaudeKey(model, userMsg);
+      via = "your Claude key";
+    } else if (engine === "nologin") {
+      setStatus("Rewriting for free (no login)…");
+      out = await runPollinations(model, userMsg);
+      via = "Pollinations";
+    } else {
+      // Free — best quality: try Puter, fall back to the no-login engine automatically.
+      try {
+        setStatus("Rewriting for free (" + model + ")…");
+        out = await runPuter(model, userMsg);
+        via = "Puter";
+      } catch (e) {
+        setStatus("Puter unavailable — falling back to the no-login engine…");
+        out = await runPollinations("openai-large", userMsg);
+        via = "Pollinations (fallback)";
+      }
     }
-
-    if (data.stop_reason === "refusal") {
-      setStatus("The model declined this text. Try the ⚡ Quick clean instead.", "err");
-      return;
-    }
-
-    const block = (data.content || []).find(b => b.type === "text");
-    let out = block ? block.text.trim() : "";
-    // Belt-and-suspenders: run the deterministic cleaner over the model's output too.
-    out = stripHidden(out);
-    if ($("tQuotes").checked) out = tidy(straighten(out));
-
-    if (!out) { setStatus("Empty response — try again.", "err"); return; }
+    out = postProcess(out);
+    if (!out) { setStatus("Empty result — try again.", "err"); return; }
     setOutput(out);
-    const usage = data.usage ? ` · ${data.usage.input_tokens}→${data.usage.output_tokens} tokens` : "";
-    setStatus("Done." + usage, "ok");
+    setStatus("Done · via " + via + ".", "ok");
   } catch (e) {
-    setStatus("Network error: " + (e.message || e) + " — check your connection.", "err");
+    if (e && e.code === "no-key") {
+      setStatus("That engine needs your Anthropic key. Add it below, or switch Engine to a Free option.", "err");
+      $("keyDetails").open = true;
+      $("apiKey").focus();
+    } else {
+      setStatus("Couldn't rewrite: " + (e.message || e) + " — try another engine or ⚡ Quick clean.", "err");
+    }
   } finally {
     btn.disabled = false;
     btn.innerHTML = label;
@@ -706,7 +817,7 @@ $("cleanBtn").onclick = () => {
   setOutput(quickClean(raw));
   setStatus("Cleaned locally — no data left your browser.", "ok");
 };
-$("humanizeBtn").onclick = humanizeAI;
+$("humanizeBtn").onclick = humanize;
 
 $("copyBtn").onclick = async () => {
   const t = output.classList.contains("placeholder") ? "" : output.textContent;
