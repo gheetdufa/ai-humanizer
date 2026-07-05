@@ -1,0 +1,736 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Humanizer — make AI text sound human</title>
+<meta name="description" content="Strip AI fingerprints and rewrite text so it reads like a person wrote it. Runs in your browser." />
+<style>
+  :root {
+    --bg: #f7f6f3;
+    --panel: #ffffff;
+    --panel-2: #fbfaf8;
+    --border: #e6e3dc;
+    --text: #24211c;
+    --muted: #6f6a60;
+    --accent: #c05a2e;
+    --accent-2: #a8481f;
+    --good: #2f7d5b;
+    --warn: #b0642a;
+    --danger: #c0392b;
+    --chip: #f0ede6;
+    --shadow: 0 1px 2px rgba(0,0,0,.04), 0 8px 24px rgba(0,0,0,.05);
+    --radius: 14px;
+    --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+    --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #171614;
+      --panel: #201e1b;
+      --panel-2: #1a1917;
+      --border: #34312c;
+      --text: #ece8e1;
+      --muted: #9a9488;
+      --accent: #e07a4d;
+      --accent-2: #f0906a;
+      --chip: #2a2824;
+      --shadow: 0 1px 2px rgba(0,0,0,.3), 0 10px 30px rgba(0,0,0,.35);
+    }
+  }
+  :root[data-theme="light"] {
+    --bg: #f7f6f3; --panel:#fff; --panel-2:#fbfaf8; --border:#e6e3dc; --text:#24211c;
+    --muted:#6f6a60; --accent:#c05a2e; --accent-2:#a8481f; --chip:#f0ede6;
+    --shadow: 0 1px 2px rgba(0,0,0,.04), 0 8px 24px rgba(0,0,0,.05);
+  }
+  :root[data-theme="dark"] {
+    --bg:#171614; --panel:#201e1b; --panel-2:#1a1917; --border:#34312c; --text:#ece8e1;
+    --muted:#9a9488; --accent:#e07a4d; --accent-2:#f0906a; --chip:#2a2824;
+    --shadow: 0 1px 2px rgba(0,0,0,.3), 0 10px 30px rgba(0,0,0,.35);
+  }
+
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--sans);
+    line-height: 1.55;
+    -webkit-font-smoothing: antialiased;
+  }
+  .wrap { max-width: 1180px; margin: 0 auto; padding: 22px clamp(14px, 3vw, 34px) 60px; }
+
+  header.top {
+    display: flex; align-items: center; justify-content: space-between; gap: 16px;
+    margin-bottom: 6px;
+  }
+  .brand { display: flex; align-items: center; gap: 12px; }
+  .logo {
+    width: 40px; height: 40px; border-radius: 11px; flex: none;
+    background: linear-gradient(150deg, var(--accent), var(--accent-2));
+    display: grid; place-items: center; color: #fff; font-weight: 800; font-size: 20px;
+    box-shadow: var(--shadow);
+  }
+  .brand h1 { font-size: 20px; margin: 0; letter-spacing: -.01em; }
+  .brand p { margin: 1px 0 0; font-size: 12.5px; color: var(--muted); }
+  .theme-btn {
+    border: 1px solid var(--border); background: var(--panel); color: var(--text);
+    width: 38px; height: 38px; border-radius: 10px; cursor: pointer; font-size: 16px;
+  }
+  .theme-btn:hover { border-color: var(--accent); }
+
+  .grid {
+    display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-top: 16px;
+  }
+  @media (max-width: 860px) { .grid { grid-template-columns: 1fr; } }
+
+  .panel {
+    background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius);
+    box-shadow: var(--shadow); display: flex; flex-direction: column; overflow: hidden;
+  }
+  .panel-head {
+    display: flex; align-items: center; justify-content: space-between; gap: 8px;
+    padding: 12px 14px; border-bottom: 1px solid var(--border); background: var(--panel-2);
+  }
+  .panel-head h2 { font-size: 13px; margin: 0; text-transform: uppercase; letter-spacing: .07em; color: var(--muted); }
+  .panel-head .actions { display: flex; gap: 6px; }
+
+  textarea, .output {
+    width: 100%; min-height: 320px; border: 0; resize: vertical;
+    padding: 16px; font-size: 15.5px; line-height: 1.6; color: var(--text);
+    background: transparent; font-family: var(--sans); outline: none;
+  }
+  .output { white-space: pre-wrap; overflow-wrap: anywhere; min-height: 320px; }
+  .output.placeholder { color: var(--muted); }
+
+  .metabar {
+    display: flex; flex-wrap: wrap; gap: 6px 14px; align-items: center;
+    padding: 9px 14px; border-top: 1px solid var(--border); background: var(--panel-2);
+    font-size: 12px; color: var(--muted);
+  }
+  .metabar b { color: var(--text); font-weight: 600; }
+
+  .controls {
+    background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius);
+    box-shadow: var(--shadow); padding: 14px 16px; margin-top: 16px;
+  }
+  .row { display: flex; flex-wrap: wrap; gap: 12px 18px; align-items: flex-end; }
+  .field { display: flex; flex-direction: column; gap: 5px; }
+  .field label { font-size: 11.5px; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); font-weight: 600; }
+  select, input[type="password"], input[type="text"] {
+    background: var(--panel-2); border: 1px solid var(--border); color: var(--text);
+    border-radius: 9px; padding: 9px 11px; font-size: 14px; font-family: var(--sans); min-width: 130px;
+  }
+  select:focus, input:focus { outline: none; border-color: var(--accent); }
+
+  .btns { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 14px; }
+  button.act {
+    border: 1px solid var(--border); background: var(--panel-2); color: var(--text);
+    padding: 11px 18px; border-radius: 10px; font-size: 14.5px; font-weight: 600;
+    cursor: pointer; font-family: var(--sans); display: inline-flex; align-items: center; gap: 8px;
+  }
+  button.act:hover:not(:disabled) { border-color: var(--accent); }
+  button.act.primary { background: linear-gradient(150deg, var(--accent), var(--accent-2)); color: #fff; border-color: transparent; }
+  button.act.primary:hover:not(:disabled) { filter: brightness(1.05); }
+  button.act:disabled { opacity: .5; cursor: not-allowed; }
+  button.mini {
+    border: 1px solid var(--border); background: var(--panel); color: var(--muted);
+    padding: 5px 10px; border-radius: 8px; font-size: 12px; cursor: pointer; font-weight: 600;
+  }
+  button.mini:hover { color: var(--text); border-color: var(--accent); }
+
+  .toggles { display: flex; flex-wrap: wrap; gap: 8px 16px; margin-top: 12px; }
+  .toggle { display: inline-flex; align-items: center; gap: 7px; font-size: 13px; color: var(--muted); cursor: pointer; }
+  .toggle input { accent-color: var(--accent); width: 15px; height: 15px; }
+
+  details.settings { margin-top: 14px; border-top: 1px dashed var(--border); padding-top: 12px; }
+  details.settings summary { cursor: pointer; font-size: 13px; color: var(--muted); font-weight: 600; user-select: none; }
+  details.settings summary:hover { color: var(--text); }
+  .key-row { display: flex; flex-wrap: wrap; gap: 10px; align-items: flex-end; margin-top: 12px; }
+  .key-row .field { flex: 1; min-width: 240px; }
+  .key-row input { width: 100%; }
+  .note { font-size: 12px; color: var(--muted); margin-top: 8px; line-height: 1.5; }
+  .note a { color: var(--accent); }
+
+  .signals { margin-top: 16px; }
+  .signals-head { font-size: 12px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); font-weight: 600; margin-bottom: 8px; }
+  .chips { display: flex; flex-wrap: wrap; gap: 7px; }
+  .chip {
+    background: var(--chip); border: 1px solid var(--border); border-radius: 20px;
+    padding: 4px 11px; font-size: 12.5px; color: var(--text);
+  }
+  .chip.clean { color: var(--good); }
+  .score-badge { font-weight: 700; }
+  .score-lo { color: var(--good); } .score-mid { color: var(--warn); } .score-hi { color: var(--danger); }
+
+  .status { font-size: 13px; color: var(--muted); margin-top: 10px; min-height: 18px; }
+  .status.err { color: var(--danger); }
+  .status.ok { color: var(--good); }
+
+  .spinner {
+    width: 15px; height: 15px; border: 2px solid rgba(255,255,255,.4); border-top-color: #fff;
+    border-radius: 50%; animation: spin .7s linear infinite; display: inline-block;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  footer { margin-top: 34px; text-align: center; font-size: 12px; color: var(--muted); line-height: 1.6; }
+  footer a { color: var(--accent); }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header class="top">
+    <div class="brand">
+      <div class="logo">H</div>
+      <div>
+        <h1>Humanizer</h1>
+        <p>Strip the AI fingerprints. Make it read like a person.</p>
+      </div>
+    </div>
+    <button class="theme-btn" id="themeBtn" title="Toggle theme" aria-label="Toggle theme">◐</button>
+  </header>
+
+  <div class="grid">
+    <div class="panel">
+      <div class="panel-head">
+        <h2>Your text</h2>
+        <div class="actions">
+          <button class="mini" id="pasteBtn">Paste</button>
+          <button class="mini" id="clearBtn">Clear</button>
+        </div>
+      </div>
+      <textarea id="input" placeholder="Paste the AI-written text here…"></textarea>
+      <div class="metabar" id="inMeta"><span><b>0</b> words</span><span><b>0</b> chars</span></div>
+    </div>
+
+    <div class="panel">
+      <div class="panel-head">
+        <h2>Humanized</h2>
+        <div class="actions">
+          <button class="mini" id="copyBtn">Copy</button>
+          <button class="mini" id="useBtn" title="Move result back to the input for another pass">Reuse</button>
+        </div>
+      </div>
+      <div class="output placeholder" id="output">Your result will appear here.</div>
+      <div class="metabar" id="outMeta"><span><b>0</b> words</span><span><b>0</b> chars</span></div>
+    </div>
+  </div>
+
+  <div class="controls">
+    <div class="row">
+      <div class="field">
+        <label for="strength">Rewrite strength</label>
+        <select id="strength">
+          <option value="light">Light — fix tells, keep phrasing</option>
+          <option value="balanced" selected>Balanced — natural rewrite</option>
+          <option value="heavy">Heavy — casual, human voice</option>
+        </select>
+      </div>
+      <div class="field">
+        <label for="tone">Tone</label>
+        <select id="tone">
+          <option value="match" selected>Match the original</option>
+          <option value="casual">Casual</option>
+          <option value="professional">Professional</option>
+          <option value="confident">Confident &amp; direct</option>
+          <option value="academic">Academic (but human)</option>
+        </select>
+      </div>
+      <div class="field">
+        <label for="model">AI model</label>
+        <select id="model">
+          <option value="claude-opus-4-8" selected>Claude Opus 4.8 — best quality</option>
+          <option value="claude-sonnet-5">Claude Sonnet 5 — fast &amp; cheap</option>
+          <option value="claude-haiku-4-5">Claude Haiku 4.5 — fastest</option>
+        </select>
+      </div>
+    </div>
+
+    <div class="toggles">
+      <label class="toggle"><input type="checkbox" id="tStrip" checked> Remove hidden AI characters</label>
+      <label class="toggle"><input type="checkbox" id="tWords" checked> Swap AI buzzwords</label>
+      <label class="toggle"><input type="checkbox" id="tContract" checked> Use contractions</label>
+      <label class="toggle"><input type="checkbox" id="tQuotes" checked> Straighten quotes &amp; dashes</label>
+    </div>
+
+    <div class="btns">
+      <button class="act primary" id="humanizeBtn">✨ Humanize with AI</button>
+      <button class="act" id="cleanBtn">⚡ Quick clean (no key)</button>
+    </div>
+    <div class="status" id="status"></div>
+
+    <details class="settings" id="keyDetails">
+      <summary>API key &amp; privacy</summary>
+      <div class="key-row">
+        <div class="field">
+          <label for="apiKey">Anthropic API key</label>
+          <input type="password" id="apiKey" placeholder="sk-ant-…" autocomplete="off" spellcheck="false" />
+        </div>
+        <button class="act" id="saveKeyBtn">Save key</button>
+        <button class="mini" id="forgetKeyBtn">Forget</button>
+      </div>
+      <p class="note">
+        Your key is stored only in this browser (localStorage) and sent directly from your browser to Anthropic — it never
+        touches any server of mine. Get a key at
+        <a href="https://console.anthropic.com/settings/keys" target="_blank" rel="noopener">console.anthropic.com</a>.
+        The <b>Quick clean</b> button needs no key and runs fully offline.
+      </p>
+    </details>
+  </div>
+
+  <div class="signals" id="signalsWrap" style="display:none;">
+    <div class="signals-head">AI-style signals detected <span id="scoreBadge" class="score-badge"></span></div>
+    <div class="chips" id="signalChips"></div>
+  </div>
+
+  <footer>
+    Runs entirely in your browser. Nothing you type is uploaded anywhere except (for AI rewrites) straight to Anthropic with your own key.<br/>
+    Built as a static page — bookmark it and it's always here.
+  </footer>
+</div>
+
+<script>
+"use strict";
+
+/* ---------- element refs ---------- */
+const $ = (id) => document.getElementById(id);
+const input = $("input"), output = $("output"), statusEl = $("status");
+const inMeta = $("inMeta"), outMeta = $("outMeta");
+
+/* ---------- theme ---------- */
+(function initTheme(){
+  const saved = localStorage.getItem("hz_theme");
+  if (saved) document.documentElement.setAttribute("data-theme", saved);
+  $("themeBtn").onclick = () => {
+    const cur = document.documentElement.getAttribute("data-theme");
+    const isDark = cur ? cur === "dark" : matchMedia("(prefers-color-scheme: dark)").matches;
+    const next = isDark ? "light" : "dark";
+    document.documentElement.setAttribute("data-theme", next);
+    localStorage.setItem("hz_theme", next);
+  };
+})();
+
+/* ---------- word / phrase maps ---------- */
+// Order-sensitive: longer phrases first. Replacements are grammatical (not deletions).
+const PHRASES = [
+  ["in today's fast-paced world", "these days"],
+  ["in todays fast-paced world", "these days"],
+  ["in today's digital age", "these days"],
+  ["in the fast-paced world of", "in"],
+  ["in the ever-evolving landscape of", "in"],
+  ["in the ever-changing landscape of", "in"],
+  ["in the ever-evolving world of", "in"],
+  ["in the realm of", "in"],
+  ["in the world of", "in"],
+  ["when it comes to", "with"],
+  ["it is important to note that", "note that"],
+  ["it's important to note that", "note that"],
+  ["it is worth noting that", "note that"],
+  ["it's worth noting that", "note that"],
+  ["it is important to remember that", "remember that"],
+  ["needless to say,", "clearly,"],
+  ["at the end of the day,", "in the end,"],
+  ["at the end of the day", "in the end"],
+  ["a testament to", "a sign of"],
+  ["plays a crucial role in", "is key to"],
+  ["plays a vital role in", "is key to"],
+  ["plays a pivotal role in", "is key to"],
+  ["play a crucial role in", "are key to"],
+  ["embark on a journey", "start"],
+  ["embark on the journey", "start"],
+  ["navigate the complexities of", "handle"],
+  ["navigate the complex", "handle the complex"],
+  ["a wide range of", "many"],
+  ["a myriad of", "many"],
+  ["a plethora of", "plenty of"],
+  ["a rich tapestry of", "a mix of"],
+  ["rich tapestry of", "mix of"],
+  ["in conclusion,", "overall,"],
+  ["in summary,", "overall,"],
+  ["to sum up,", "overall,"],
+  ["first and foremost,", "first,"],
+  ["first and foremost", "first"],
+  ["cutting-edge", "new"],
+  ["state-of-the-art", "top"],
+  ["game-changer", "big deal"],
+  ["game changer", "big deal"],
+  ["last but not least,", "finally,"],
+  ["last but not least", "finally"],
+];
+
+const WORDS = [
+  ["delving", "digging"], ["delve", "dig"], ["delved", "dug"],
+  ["utilize", "use"], ["utilizing", "using"], ["utilized", "used"], ["utilization", "use"],
+  ["leverage", "use"], ["leveraging", "using"], ["leveraged", "used"],
+  ["facilitate", "help"], ["facilitates", "helps"], ["facilitating", "helping"],
+  ["demonstrate", "show"], ["demonstrates", "shows"], ["demonstrating", "showing"],
+  ["numerous", "many"], ["myriad", "many"],
+  ["robust", "strong"], ["seamless", "smooth"], ["seamlessly", "smoothly"],
+  ["comprehensive", "full"], ["crucial", "key"], ["pivotal", "key"], ["paramount", "vital"],
+  ["meticulous", "careful"], ["meticulously", "carefully"],
+  ["realm", "area"], ["foster", "build"], ["fostering", "building"],
+  ["unlock", "open up"], ["unlocking", "opening up"], ["unleash", "release"],
+  ["empower", "help"], ["empowering", "helping"], ["empowered", "helped"],
+  ["showcase", "show"], ["showcases", "shows"], ["showcasing", "showing"],
+  ["elevate", "lift"], ["elevates", "lifts"], ["elevating", "lifting"],
+  ["underscore", "highlight"], ["underscores", "highlights"], ["underscoring", "highlighting"],
+  ["vibrant", "lively"], ["bustling", "busy"], ["whimsical", "quirky"],
+  ["holistic", "whole"], ["synergy", "teamwork"], ["paradigm", "model"],
+  ["transformative", "major"], ["revolutionize", "change"], ["revolutionary", "new"],
+  ["groundbreaking", "new"], ["innovative", "fresh"],
+  ["streamline", "simplify"], ["streamlined", "simplified"], ["streamlining", "simplifying"],
+  ["optimize", "improve"], ["optimizing", "improving"], ["optimized", "improved"],
+  ["enhance", "improve"], ["enhances", "improves"], ["enhancing", "improving"], ["enhanced", "improved"],
+  ["harness", "use"], ["harnessing", "using"],
+  ["bespoke", "custom"], ["multifaceted", "complex"],
+  ["furthermore", "also"], ["moreover", "also"], ["additionally", "also"],
+  ["nonetheless", "still"], ["nevertheless", "still"],
+  ["commence", "start"], ["commencing", "starting"],
+  ["endeavor", "effort"], ["endeavors", "efforts"],
+  ["ascertain", "find out"], ["utilise", "use"], ["prioritize", "focus on"],
+];
+
+const CONTRACTIONS = [
+  ["do not", "don't"], ["does not", "doesn't"], ["did not", "didn't"],
+  ["is not", "isn't"], ["are not", "aren't"], ["was not", "wasn't"], ["were not", "weren't"],
+  ["have not", "haven't"], ["has not", "hasn't"], ["had not", "hadn't"],
+  ["will not", "won't"], ["would not", "wouldn't"], ["should not", "shouldn't"],
+  ["could not", "couldn't"], ["cannot", "can't"], ["can not", "can't"],
+  ["must not", "mustn't"], ["let us", "let's"],
+  ["you are", "you're"], ["we are", "we're"], ["they are", "they're"],
+  ["that is", "that's"], ["there is", "there's"], ["who is", "who's"],
+  ["you will", "you'll"], ["we will", "we'll"], ["they will", "they'll"], ["it will", "it'll"],
+  ["you have", "you've"], ["we have", "we've"], ["they have", "they've"], ["I have", "I've"],
+  ["you would", "you'd"], ["I would", "I'd"], ["they would", "they'd"], ["we would", "we'd"],
+  ["I am", "I'm"], ["it is", "it's"], ["I will", "I'll"],
+];
+
+// Detection-only lists (broader) for the signal panel.
+const DETECT_WORDS = ["delve","delving","tapestry","landscape","leverage","utilize","robust","seamless",
+  "comprehensive","crucial","pivotal","paramount","meticulous","realm","navigate","foster","embark",
+  "unlock","unleash","empower","showcase","elevate","underscore","testament","myriad","plethora",
+  "vibrant","bustling","cutting-edge","state-of-the-art","transformative","groundbreaking","innovative",
+  "holistic","synergy","paradigm","furthermore","moreover","multifaceted","bespoke","whimsical","harness"];
+const DETECT_PHRASES = ["it's important to note","it is important to note","in today's","when it comes to",
+  "at the end of the day","needless to say","in conclusion","rich tapestry","a myriad of","a plethora of",
+  "ever-evolving","not only","not just","that's not","dive into","deep dive"];
+
+/* ---------- helpers ---------- */
+function escapeRe(s){ return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"); }
+
+// Replace whole words/phrases, preserving the capitalization of the first letter.
+function replacePreserving(text, find, repl) {
+  const re = new RegExp("\\b" + escapeRe(find) + "\\b", "gi");
+  return text.replace(re, (m) => {
+    if (m[0] === m[0].toUpperCase() && m[0] !== m[0].toLowerCase()) {
+      return repl[0].toUpperCase() + repl.slice(1);
+    }
+    return repl;
+  });
+}
+
+function applyList(text, list) {
+  for (const [a, b] of list) text = replacePreserving(text, a, b);
+  return text;
+}
+
+function stripHidden(text) {
+  // Remove zero-width / invisible / watermark characters entirely.
+  text = text.replace(/[​‌‍⁠﻿­᠎⁡⁢⁣⁤]/g, "");
+  // Turn exotic spaces into a normal space.
+  text = text.replace(/[  -   　]/g, " ");
+  return text;
+}
+
+function straighten(text) {
+  text = text
+    .replace(/[‘’‚‛′]/g, "'")
+    .replace(/[“”„‟″]/g, '"')
+    .replace(/…/g, "...");
+  // Em / en dashes → comma (space-padded ones) or hyphen (tight ones), then tidy.
+  text = text.replace(/\s*[—―]\s*/g, ", ");   // — spaced → ,
+  text = text.replace(/(\w)\s*[–]\s*(\w)/g, "$1-$2"); // word–word → word-word
+  text = text.replace(/\s*[–]\s*/g, ", ");         // remaining – → ,
+  return text;
+}
+
+function tidy(text) {
+  return text
+    .replace(/[ \t]{2,}/g, " ")
+    .replace(/ ([,.;:!?])/g, "$1")
+    .replace(/,\s*,/g, ",")
+    .replace(/\.\s*\./g, ".")
+    .replace(/[ \t]+\n/g, "\n")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+}
+
+// The instant, no-key cleaner.
+function quickClean(text) {
+  const o = {
+    strip: $("tStrip").checked,
+    words: $("tWords").checked,
+    contract: $("tContract").checked,
+    quotes: $("tQuotes").checked,
+  };
+  if (o.strip) text = stripHidden(text);
+  if (o.quotes) text = straighten(text);
+  if (o.words) { text = applyList(text, PHRASES); text = applyList(text, WORDS); }
+  if (o.contract) text = applyList(text, CONTRACTIONS);
+  return tidy(text);
+}
+
+/* ---------- AI-signal scoring ---------- */
+function analyze(text) {
+  const signals = [];
+  let score = 0;
+  if (!text.trim()) return { score: 0, signals };
+
+  const lower = text.toLowerCase();
+
+  // hidden characters
+  const hidden = (text.match(/[​‌‍⁠﻿­  ]/g) || []).length;
+  if (hidden) { signals.push(`${hidden} hidden character${hidden>1?"s":""}`); score += Math.min(30, hidden * 6); }
+
+  // buzzwords
+  const foundWords = DETECT_WORDS.filter(w => new RegExp("\\b"+escapeRe(w)+"\\b","i").test(lower));
+  if (foundWords.length) { signals.push(`buzzwords: ${foundWords.slice(0,6).join(", ")}${foundWords.length>6?"…":""}`); score += foundWords.length * 7; }
+
+  // filler phrases
+  const foundPhrases = DETECT_PHRASES.filter(p => lower.includes(p));
+  if (foundPhrases.length) { signals.push(`AI phrases: ${foundPhrases.slice(0,4).join(", ")}${foundPhrases.length>4?"…":""}`); score += foundPhrases.length * 9; }
+
+  // em dashes
+  const dashes = (text.match(/[—–]/g) || []).length;
+  if (dashes >= 2) { signals.push(`${dashes} em/en dashes`); score += Math.min(18, dashes * 4); }
+
+  // curly quotes
+  if (/[‘’“”]/.test(text)) { signals.push("curly quotes"); score += 6; }
+
+  // burstiness (sentence-length variance)
+  const sentences = text.split(/(?<=[.!?])\s+/).filter(s => s.trim().length > 1);
+  if (sentences.length >= 4) {
+    const lens = sentences.map(s => s.split(/\s+/).length);
+    const mean = lens.reduce((a,b)=>a+b,0) / lens.length;
+    const sd = Math.sqrt(lens.reduce((a,b)=>a+(b-mean)**2,0) / lens.length);
+    const cv = mean ? sd / mean : 0;
+    if (cv < 0.35) { signals.push(`uniform sentence length (low burstiness)`); score += 16; }
+  }
+
+  // rule of three / contrast constructions
+  if (/\bnot only\b/i.test(text) || /\bnot just\b[^.]*\bit'?s\b/i.test(text)) { signals.push("“not just X, it's Y” construction"); score += 8; }
+
+  score = Math.max(0, Math.min(100, Math.round(score)));
+  return { score, signals };
+}
+
+function renderSignals(text) {
+  const { score, signals } = analyze(text);
+  const wrap = $("signalsWrap");
+  if (!text.trim()) { wrap.style.display = "none"; return; }
+  wrap.style.display = "block";
+  const badge = $("scoreBadge");
+  const cls = score < 25 ? "score-lo" : score < 55 ? "score-mid" : "score-hi";
+  badge.className = "score-badge " + cls;
+  badge.textContent = "· " + score + "/100";
+  const chips = $("signalChips");
+  chips.innerHTML = "";
+  if (!signals.length) {
+    const c = document.createElement("span");
+    c.className = "chip clean";
+    c.textContent = "✓ looks clean — no obvious AI tells";
+    chips.appendChild(c);
+    return;
+  }
+  for (const s of signals) {
+    const c = document.createElement("span");
+    c.className = "chip";
+    c.textContent = s;
+    chips.appendChild(c);
+  }
+}
+
+/* ---------- meta counts ---------- */
+function counts(text) {
+  const words = (text.trim().match(/\S+/g) || []).length;
+  return { words, chars: text.length };
+}
+function updateMeta(el, text) {
+  const c = counts(text);
+  el.innerHTML = `<span><b>${c.words}</b> words</span><span><b>${c.chars}</b> chars</span>`;
+}
+
+/* ---------- output helpers ---------- */
+function setOutput(text) {
+  if (!text) { output.classList.add("placeholder"); output.textContent = "Your result will appear here."; updateMeta(outMeta, ""); return; }
+  output.classList.remove("placeholder");
+  output.textContent = text;
+  updateMeta(outMeta, text);
+  renderSignals(text);
+}
+function setStatus(msg, kind) {
+  statusEl.className = "status" + (kind ? " " + kind : "");
+  statusEl.innerHTML = msg || "";
+}
+
+/* ---------- AI rewrite via Anthropic (direct browser call) ---------- */
+const SYSTEM_PROMPT = `You are an expert editor who rewrites text so it reads as if a thoughtful person wrote it, erasing the statistical and stylistic fingerprints that mark text as AI-generated — while keeping the meaning, facts, and intent exactly.
+
+Rules:
+
+MEANING: Preserve every fact, name, number, quote, and the overall intent. Keep roughly the same length. Do not add new claims or opinions, and do not drop real content. Keep the same language as the input.
+
+VOCABULARY: Remove AI-favored words and use plain, common ones instead — delve, tapestry, landscape, leverage, utilize, robust, seamless, comprehensive, crucial, pivotal, paramount, meticulous, realm, navigate, foster, embark, unlock, unleash, empower, showcase, elevate, underscore, testament, myriad, plethora, vibrant, bustling, cutting-edge, state-of-the-art, transformative, groundbreaking, innovative, holistic, synergy, paradigm, furthermore, moreover, and the like. Prefer short, ordinary words.
+
+PHRASES: Cut throat-clearing and filler — "it's important to note", "it's worth noting", "in today's fast-paced world", "in the ever-evolving landscape", "when it comes to", "at the end of the day", "needless to say", "in conclusion", "in summary". Just say the thing.
+
+STRUCTURE: Vary sentence length sharply. Mix short, punchy sentences with longer ones — do not let every sentence and paragraph settle into the same medium length. Break up lists of exactly three parallel items; use two or four, or restructure. Avoid "It's not just X, it's Y" and "not only… but also" constructions. Don't start consecutive sentences the same way.
+
+PUNCTUATION: Use em dashes rarely — at most once or twice in a long passage; prefer commas, periods, or parentheses. Use straight quotes and apostrophes, never curly. Don't lean on semicolons or colons.
+
+VOICE: Use contractions naturally (don't, it's, you're, we'll). Allow a natural, slightly uneven rhythm. Keep a clear point of view where the original has one; don't hedge everything.
+
+Do NOT add headers, bullets, or markdown that weren't in the original. Do NOT add a preamble, sign-off, or any explanation. Do NOT wrap the output in quotation marks. Output ONLY the rewritten text.`;
+
+function buildUserMessage(text, strength, tone) {
+  const strengthNote = {
+    light: "Rewrite strength: LIGHT. Fix the AI tells and swap buzzwords, but stay close to the original wording and structure.",
+    balanced: "Rewrite strength: BALANCED. Rewrite freely for a natural human rhythm while keeping the meaning and length.",
+    heavy: "Rewrite strength: HEAVY. Rewrite thoroughly into a distinctly human, conversational voice; restructure sentences as needed while keeping every fact.",
+  }[strength] || "";
+  const toneNote = {
+    match: "Tone: match the original tone.",
+    casual: "Tone: casual and conversational, like talking to a friend.",
+    professional: "Tone: professional but human — clear and warm, not stiff.",
+    confident: "Tone: confident and direct, few hedges.",
+    academic: "Tone: academic but readable — precise, no filler, still human.",
+  }[tone] || "";
+  return `${strengthNote}\n${toneNote}\n\nRewrite the text between the markers. Output only the rewritten text.\n\n<<<TEXT\n${text}\nTEXT>>>`;
+}
+
+async function humanizeAI() {
+  const raw = input.value;
+  if (!raw.trim()) { setStatus("Paste some text first.", "err"); return; }
+  const key = getKey();
+  if (!key) {
+    setStatus("Add your Anthropic API key below to use AI rewriting — or use ⚡ Quick clean (no key needed).", "err");
+    $("keyDetails").open = true;
+    $("apiKey").focus();
+    return;
+  }
+
+  // Pre-clean hidden characters so they never survive even if the model keeps them.
+  let text = stripHidden(raw);
+
+  const model = $("model").value;
+  const strength = $("strength").value;
+  const tone = $("tone").value;
+  const btn = $("humanizeBtn");
+  btn.disabled = true;
+  const label = btn.innerHTML;
+  btn.innerHTML = '<span class="spinner"></span> Humanizing…';
+  setStatus("Sending to " + model + "…");
+
+  try {
+    const res = await fetch("https://api.anthropic.com/v1/messages", {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "x-api-key": key,
+        "anthropic-version": "2023-06-01",
+        "anthropic-dangerous-direct-browser-access": "true",
+      },
+      body: JSON.stringify({
+        model,
+        max_tokens: 8192,
+        system: SYSTEM_PROMPT,
+        messages: [{ role: "user", content: buildUserMessage(text, strength, tone) }],
+      }),
+    });
+
+    const data = await res.json();
+
+    if (!res.ok || data.type === "error") {
+      const msg = (data && data.error && data.error.message) || ("HTTP " + res.status);
+      if (res.status === 401) { setStatus("Invalid API key. Check it below.", "err"); }
+      else if (res.status === 429) { setStatus("Rate limited — wait a moment and try again.", "err"); }
+      else { setStatus("Error: " + msg, "err"); }
+      return;
+    }
+
+    if (data.stop_reason === "refusal") {
+      setStatus("The model declined this text. Try the ⚡ Quick clean instead.", "err");
+      return;
+    }
+
+    const block = (data.content || []).find(b => b.type === "text");
+    let out = block ? block.text.trim() : "";
+    // Belt-and-suspenders: run the deterministic cleaner over the model's output too.
+    out = stripHidden(out);
+    if ($("tQuotes").checked) out = tidy(straighten(out));
+
+    if (!out) { setStatus("Empty response — try again.", "err"); return; }
+    setOutput(out);
+    const usage = data.usage ? ` · ${data.usage.input_tokens}→${data.usage.output_tokens} tokens` : "";
+    setStatus("Done." + usage, "ok");
+  } catch (e) {
+    setStatus("Network error: " + (e.message || e) + " — check your connection.", "err");
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = label;
+  }
+}
+
+/* ---------- API key storage ---------- */
+function getKey() { return ($("apiKey").value || "").trim(); }
+(function loadKey(){
+  const k = localStorage.getItem("hz_key");
+  if (k) $("apiKey").value = k;
+})();
+$("saveKeyBtn").onclick = () => {
+  const k = getKey();
+  if (!k) { setStatus("Nothing to save.", "err"); return; }
+  localStorage.setItem("hz_key", k);
+  setStatus("Key saved in this browser.", "ok");
+};
+$("forgetKeyBtn").onclick = () => {
+  localStorage.removeItem("hz_key");
+  $("apiKey").value = "";
+  setStatus("Key removed from this browser.", "ok");
+};
+
+/* ---------- wire up buttons ---------- */
+$("cleanBtn").onclick = () => {
+  const raw = input.value;
+  if (!raw.trim()) { setStatus("Paste some text first.", "err"); return; }
+  setOutput(quickClean(raw));
+  setStatus("Cleaned locally — no data left your browser.", "ok");
+};
+$("humanizeBtn").onclick = humanizeAI;
+
+$("copyBtn").onclick = async () => {
+  const t = output.classList.contains("placeholder") ? "" : output.textContent;
+  if (!t) { setStatus("Nothing to copy yet.", "err"); return; }
+  try { await navigator.clipboard.writeText(t); setStatus("Copied to clipboard.", "ok"); }
+  catch { setStatus("Copy failed — select and copy manually.", "err"); }
+};
+$("useBtn").onclick = () => {
+  const t = output.classList.contains("placeholder") ? "" : output.textContent;
+  if (!t) return;
+  input.value = t;
+  updateMeta(inMeta, t);
+  renderSignals(t);
+  setOutput("");
+};
+$("clearBtn").onclick = () => { input.value = ""; updateMeta(inMeta, ""); renderSignals(""); setOutput(""); setStatus(""); };
+$("pasteBtn").onclick = async () => {
+  try { const t = await navigator.clipboard.readText(); input.value = t; input.dispatchEvent(new Event("input")); }
+  catch { setStatus("Couldn't read clipboard — paste manually with Ctrl/Cmd+V.", "err"); }
+};
+
+input.addEventListener("input", () => { updateMeta(inMeta, input.value); renderSignals(input.value); });
+
+updateMeta(inMeta, "");
+</script>
+</body>
+</html>
