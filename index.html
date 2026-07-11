@@ -231,8 +231,8 @@
         <label for="strength">Rewrite strength</label>
         <select id="strength">
           <option value="light">Light — fix tells, keep phrasing</option>
-          <option value="balanced" selected>Balanced — natural rewrite</option>
-          <option value="heavy">Heavy — casual, human voice</option>
+          <option value="balanced">Balanced — natural rewrite</option>
+          <option value="heavy" selected>Heavy — beat AI detectors</option>
         </select>
       </div>
       <div class="field">
@@ -252,10 +252,12 @@
       <label class="toggle"><input type="checkbox" id="tWords" checked> Swap AI buzzwords</label>
       <label class="toggle"><input type="checkbox" id="tContract" checked> Use contractions</label>
       <label class="toggle"><input type="checkbox" id="tQuotes" checked> Straighten quotes &amp; dashes</label>
+      <label class="toggle"><input type="checkbox" id="tAntiDetect" checked> Anti-detect rhythm (ZeroGPT-style)</label>
+      <label class="toggle"><input type="checkbox" id="tTwoPass" checked> Second pass for stubborn AI tone</label>
     </div>
 
     <div class="btns">
-      <button class="act primary" id="humanizeBtn">✨ Humanize (free)</button>
+      <button class="act primary" id="humanizeBtn">✨ Humanize (anti-detect)</button>
       <button class="act" id="cleanBtn">⚡ Quick clean (offline)</button>
     </div>
     <div class="status" id="status"></div>
@@ -270,7 +272,9 @@
         allowance). If Puter is unavailable it automatically falls through to LLM7, then Pollinations.<br/><br/>
         <b>Free — no login</b> skips Puter and uses <a href="https://llm7.io" target="_blank" rel="noopener">LLM7</a>
         / <a href="https://pollinations.ai" target="_blank" rel="noopener">Pollinations</a> with no account.
-        <b>Quick clean</b> runs fully offline.
+        <b>Quick clean</b> runs fully offline.<br/><br/>
+        For detectors like ZeroGPT: leave <b>Heavy</b> strength, <b>Anti-detect rhythm</b>, and <b>Second pass</b> on.
+        If a sentence is still highlighted yellow, hit Humanize again on that chunk (use Reuse).
       </p>
     </details>
   </div>
@@ -312,47 +316,72 @@ const inMeta = $("inMeta"), outMeta = $("outMeta");
 const PHRASES = [
   ["in today's fast-paced world", "these days"],
   ["in todays fast-paced world", "these days"],
-  ["in today's digital age", "these days"],
+  ["in today's digital age", "online now"],
+  ["in today's world", "these days"],
+  ["in the modern world", "now"],
   ["in the fast-paced world of", "in"],
   ["in the ever-evolving landscape of", "in"],
   ["in the ever-changing landscape of", "in"],
   ["in the ever-evolving world of", "in"],
+  ["across various industries", "in a lot of fields"],
+  ["across different sectors", "in different fields"],
   ["in the realm of", "in"],
   ["in the world of", "in"],
-  ["when it comes to", "with"],
-  ["it is important to note that", "note that"],
-  ["it's important to note that", "note that"],
-  ["it is worth noting that", "note that"],
-  ["it's worth noting that", "note that"],
-  ["it is important to remember that", "remember that"],
-  ["needless to say,", "clearly,"],
-  ["at the end of the day,", "in the end,"],
-  ["at the end of the day", "in the end"],
-  ["a testament to", "a sign of"],
-  ["plays a crucial role in", "is key to"],
-  ["plays a vital role in", "is key to"],
-  ["plays a pivotal role in", "is key to"],
-  ["play a crucial role in", "are key to"],
+  ["when it comes to", "for"],
+  ["it is important to note that", ""],
+  ["it's important to note that", ""],
+  ["it is worth noting that", ""],
+  ["it's worth noting that", ""],
+  ["it is important to remember that", "remember:"],
+  ["it should be noted that", ""],
+  ["needless to say,", ""],
+  ["needless to say", ""],
+  ["at the end of the day,", "honestly,"],
+  ["at the end of the day", "honestly"],
+  ["a testament to", "proof of"],
+  ["plays a crucial role in", "matters a lot for"],
+  ["plays a vital role in", "matters for"],
+  ["plays a pivotal role in", "shapes"],
+  ["play a crucial role in", "matter for"],
   ["embark on a journey", "start"],
   ["embark on the journey", "start"],
-  ["navigate the complexities of", "handle"],
-  ["navigate the complex", "handle the complex"],
-  ["a wide range of", "many"],
-  ["a myriad of", "many"],
+  ["navigate the complexities of", "deal with"],
+  ["navigate the complex", "handle the messy"],
+  ["a wide range of", "all kinds of"],
+  ["a myriad of", "a bunch of"],
   ["a plethora of", "plenty of"],
   ["a rich tapestry of", "a mix of"],
   ["rich tapestry of", "mix of"],
-  ["in conclusion,", "overall,"],
-  ["in summary,", "overall,"],
-  ["to sum up,", "overall,"],
+  ["in conclusion,", "so,"],
+  ["in summary,", "so,"],
+  ["to sum up,", "so,"],
   ["first and foremost,", "first,"],
   ["first and foremost", "first"],
   ["cutting-edge", "new"],
-  ["state-of-the-art", "top"],
-  ["game-changer", "big deal"],
-  ["game changer", "big deal"],
-  ["last but not least,", "finally,"],
-  ["last but not least", "finally"],
+  ["state-of-the-art", "current"],
+  ["game-changer", "big shift"],
+  ["game changer", "big shift"],
+  ["last but not least,", "and finally,"],
+  ["last but not least", "and finally"],
+  ["meaningful outcomes", "real results"],
+  ["drive meaningful", "get real"],
+  ["unprecedented insights", "new angles"],
+  ["revolutionized the way", "changed how"],
+  ["has revolutionized", "has changed"],
+  ["continue to evolve", "keep changing"],
+  ["continues to evolve", "keeps changing"],
+  ["at a rapid pace", "fast"],
+  ["in order to", "to"],
+  ["due to the fact that", "because"],
+  ["as a result of", "from"],
+  ["with that being said,", "still,"],
+  ["that being said,", "still,"],
+  ["on the other hand,", "then again,"],
+  ["in this day and age", "now"],
+  ["think outside the box", "try something new"],
+  ["increasingly vital", "more important now"],
+  ["drive meaningful outcomes", "get real results"],
+  ["unprecedented insights", "new angles"],
 ];
 
 const WORDS = [
@@ -362,29 +391,33 @@ const WORDS = [
   ["facilitate", "help"], ["facilitates", "helps"], ["facilitating", "helping"],
   ["demonstrate", "show"], ["demonstrates", "shows"], ["demonstrating", "showing"],
   ["numerous", "many"], ["myriad", "many"],
-  ["robust", "strong"], ["seamless", "smooth"], ["seamlessly", "smoothly"],
-  ["comprehensive", "full"], ["crucial", "key"], ["pivotal", "key"], ["paramount", "vital"],
+  ["robust", "solid"], ["seamless", "smooth"], ["seamlessly", "smoothly"],
+  ["comprehensive", "full"], ["crucial", "key"], ["pivotal", "central"], ["paramount", "top"],
   ["meticulous", "careful"], ["meticulously", "carefully"],
-  ["realm", "area"], ["foster", "build"], ["fostering", "building"],
-  ["unlock", "open up"], ["unlocking", "opening up"], ["unleash", "release"],
-  ["empower", "help"], ["empowering", "helping"], ["empowered", "helped"],
+  ["realm", "area"], ["foster", "encourage"], ["fostering", "encouraging"],
+  ["unlock", "open up"], ["unlocking", "opening up"], ["unleash", "let loose"],
+  ["empower", "give room to"], ["empowering", "backing"], ["empowered", "backed"],
   ["showcase", "show"], ["showcases", "shows"], ["showcasing", "showing"],
-  ["elevate", "lift"], ["elevates", "lifts"], ["elevating", "lifting"],
-  ["underscore", "highlight"], ["underscores", "highlights"], ["underscoring", "highlighting"],
+  ["elevate", "raise"], ["elevates", "raises"], ["elevating", "raising"],
+  ["underscore", "point to"], ["underscores", "points to"], ["underscoring", "pointing to"],
   ["vibrant", "lively"], ["bustling", "busy"], ["whimsical", "quirky"],
-  ["holistic", "whole"], ["synergy", "teamwork"], ["paradigm", "model"],
-  ["transformative", "major"], ["revolutionize", "change"], ["revolutionary", "new"],
-  ["groundbreaking", "new"], ["innovative", "fresh"],
+  ["holistic", "whole"], ["synergy", "fit"], ["paradigm", "model"],
+  ["transformative", "big"], ["revolutionize", "change"], ["revolutionary", "new"],
+  ["groundbreaking", "fresh"], ["innovative", "new"],
   ["streamline", "simplify"], ["streamlined", "simplified"], ["streamlining", "simplifying"],
-  ["optimize", "improve"], ["optimizing", "improving"], ["optimized", "improved"],
+  ["optimize", "tune"], ["optimizing", "tuning"], ["optimized", "tuned"],
   ["enhance", "improve"], ["enhances", "improves"], ["enhancing", "improving"], ["enhanced", "improved"],
   ["harness", "use"], ["harnessing", "using"],
-  ["bespoke", "custom"], ["multifaceted", "complex"],
+  ["bespoke", "custom"], ["multifaceted", "layered"],
   ["furthermore", "also"], ["moreover", "also"], ["additionally", "also"],
   ["nonetheless", "still"], ["nevertheless", "still"],
   ["commence", "start"], ["commencing", "starting"],
-  ["endeavor", "effort"], ["endeavors", "efforts"],
-  ["ascertain", "find out"], ["utilise", "use"], ["prioritize", "focus on"],
+  ["endeavor", "try"], ["endeavors", "tries"],
+  ["ascertain", "find out"], ["utilise", "use"], ["prioritize", "put first"],
+  ["significant", "real"], ["significantly", "a lot"],
+  ["essential", "needed"], ["essentially", "basically"],
+  ["organizations", "companies"], ["organization", "company"],
+  ["individuals", "people"], ["individual", "person"],
 ];
 
 const CONTRACTIONS = [
@@ -419,6 +452,7 @@ function escapeRe(s){ return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"); }
 function replacePreserving(text, find, repl) {
   const re = new RegExp("\\b" + escapeRe(find) + "\\b", "gi");
   return text.replace(re, (m) => {
+    if (!repl) return "";
     if (m[0] === m[0].toUpperCase() && m[0] !== m[0].toLowerCase()) {
       return repl[0].toUpperCase() + repl.slice(1);
     }
@@ -570,39 +604,47 @@ function setStatus(msg, kind) {
   statusEl.innerHTML = msg || "";
 }
 
-/* ---------- AI rewrite (free providers only — no Anthropic) ---------- */
-const SYSTEM_PROMPT = `You are an expert editor who rewrites text so it reads as if a thoughtful person wrote it, erasing the statistical and stylistic fingerprints that mark text as AI-generated — while keeping the meaning, facts, and intent exactly.
+/* ---------- AI rewrite (free providers — anti-detect focused) ---------- */
+const SYSTEM_PROMPT = `You are a human editor. Rewrite text so AI detectors (ZeroGPT, GPTZero) score it as human — keep meaning, facts, names, numbers, quotes, and language.
 
-Rules:
+Detectors measure PERPLEXITY (predictable words) and BURSTINESS (even sentence length). Defeat both.
 
-MEANING: Preserve every fact, name, number, quote, and the overall intent. Keep roughly the same length. Do not add new claims or opinions, and do not drop real content. Keep the same language as the input.
+Example BAD → GOOD:
+BAD: "Climate change poses significant challenges to global agriculture, requiring comprehensive strategies to ensure food security for future generations."
+GOOD: "Farming is getting harder as the climate shifts. Crops that used to be safe bets fail in heat waves now. Countries that want stable food supplies have to change how they plant, store, and share — not just write another report."
 
-VOCABULARY: Remove AI-favored words and use plain, common ones instead — delve, tapestry, landscape, leverage, utilize, robust, seamless, comprehensive, crucial, pivotal, paramount, meticulous, realm, navigate, foster, embark, unlock, unleash, empower, showcase, elevate, underscore, testament, myriad, plethora, vibrant, bustling, cutting-edge, state-of-the-art, transformative, groundbreaking, innovative, holistic, synergy, paradigm, furthermore, moreover, and the like. Prefer short, ordinary words.
+Hard rules:
+- Restructure completely. Do NOT paraphrase sentence-by-sentence in the same shape.
+- Mix very short sentences (3–8 words) with longer ones (22–40 words). Never three similar-length sentences in a row.
+- Prefer concrete nouns and ordinary speech over abstract brochure words.
+- Use contractions (don't, it's, you're, we'll, that's).
+- Ban these (delete or replace): leverage, unlock, unleash, transformative, landscape, tapestry, delve, foster, empower, furthermore, moreover, additionally, insights, cutting-edge, comprehensive, robust, seamless, pivotal, paradigm, synergy, "when it comes to", "in today's", "it is important to note", "it's worth noting", "not only… but also", "it's not just X, it's Y".
+- Em dashes rare; straight quotes; no markdown/bullets/preamble.
+- Output ONLY the rewritten text.`;
 
-PHRASES: Cut throat-clearing and filler — "it's important to note", "it's worth noting", "in today's fast-paced world", "in the ever-evolving landscape", "when it comes to", "at the end of the day", "needless to say", "in conclusion", "in summary". Just say the thing.
+const PASS2_PROMPT = `This draft still reads too smooth for ZeroGPT. Rewrite AGAIN with MORE sentence-length contrast and plainer wording.
 
-STRUCTURE: Vary sentence length sharply. Mix short, punchy sentences with longer ones — do not let every sentence and paragraph settle into the same medium length. Break up lists of exactly three parallel items; use two or four, or restructure. Avoid "It's not just X, it's Y" and "not only… but also" constructions. Don't start consecutive sentences the same way.
-
-PUNCTUATION: Use em dashes rarely — at most once or twice in a long passage; prefer commas, periods, or parentheses. Use straight quotes and apostrophes, never curly. Don't lean on semicolons or colons.
-
-VOICE: Use contractions naturally (don't, it's, you're, we'll). Allow a natural, slightly uneven rhythm. Keep a clear point of view where the original has one; don't hedge everything.
-
-Do NOT add headers, bullets, or markdown that weren't in the original. Do NOT add a preamble, sign-off, or any explanation. Do NOT wrap the output in quotation marks. Output ONLY the rewritten text.`;
+Keep every fact. Do NOT reintroduce banned AI words (leverage, unlock, cutting-edge, empower, foster, transformative, furthermore, moreover, insights, comprehensive, robust, innovative, landscape).
+Prefer ordinary speech. Short sentence next to a long one. Output ONLY the rewritten text.`;
 
 function buildUserMessage(text, strength, tone) {
   const strengthNote = {
-    light: "Rewrite strength: LIGHT. Fix the AI tells and swap buzzwords, but stay close to the original wording and structure.",
-    balanced: "Rewrite strength: BALANCED. Rewrite freely for a natural human rhythm while keeping the meaning and length.",
-    heavy: "Rewrite strength: HEAVY. Rewrite thoroughly into a distinctly human, conversational voice; restructure sentences as needed while keeping every fact.",
+    light: "Strength: LIGHT. Fix AI tells and swap buzzwords, but stay fairly close to the original structure. Still vary sentence length.",
+    balanced: "Strength: BALANCED. Restructure freely. Strong burstiness. Natural human rhythm. Same meaning and length (±15%).",
+    heavy: "Strength: HEAVY (anti-detect). Fully restructure. Aggressive burstiness and less-predictable wording. Conversational where tone allows. Same facts. Aim to beat ZeroGPT.",
   }[strength] || "";
   const toneNote = {
     match: "Tone: match the original tone.",
-    casual: "Tone: casual and conversational, like talking to a friend.",
-    professional: "Tone: professional but human — clear and warm, not stiff.",
+    casual: "Tone: casual, like explaining to a friend.",
+    professional: "Tone: professional but human — clear, not stiff, not corporate-brochure.",
     confident: "Tone: confident and direct, few hedges.",
-    academic: "Tone: academic but readable — precise, no filler, still human.",
+    academic: "Tone: academic but readable — precise, no filler, still human rhythm.",
   }[tone] || "";
   return `${strengthNote}\n${toneNote}\n\nRewrite the text between the markers. Output only the rewritten text.\n\n<<<TEXT\n${text}\nTEXT>>>`;
+}
+
+function buildPass2Message(text) {
+  return `Rewrite again for anti-detect. Output only the rewritten text.\n\n<<<TEXT\n${text}\nTEXT>>>`;
 }
 
 const MODELS = {
@@ -629,7 +671,6 @@ function populateModels() {
 }
 (function initEngine(){
   let saved = localStorage.getItem("hz_engine");
-  // Migrate away from the old paid Anthropic engine.
   if (saved === "key" || (saved && !MODELS[saved])) {
     saved = "free";
     localStorage.setItem("hz_engine", "free");
@@ -643,21 +684,136 @@ function populateModels() {
   });
 })();
 
-// Always run the deterministic cleaner over model output so tells never survive.
-function postProcess(out) {
+function splitSentences(text) {
+  const parts = text.match(/[^.!?]+(?:[.!?]+["']?|$)/g);
+  return parts ? parts.map(s => s.trim()).filter(Boolean) : [text];
+}
+
+function wordCount(s) {
+  return (s.match(/\S+/g) || []).length;
+}
+
+// Deterministic anti-detect pass: nuke leftover AI glue + force sentence-length variance.
+function forceHumanRhythm(text, strength) {
+  if (!text) return text;
+  if ($("tStrip").checked) text = stripHidden(text);
+  if ($("tQuotes").checked) text = straighten(text);
+  if ($("tWords").checked) { text = applyList(text, PHRASES); text = applyList(text, WORDS); }
+  if ($("tContract").checked) text = applyList(text, CONTRACTIONS);
+
+  // Collapse empty leftovers from deleted phrases ("  .", leading commas).
+  text = text
+    .replace(/(^|[.!?]\s*)[,:;]\s+/g, "$1")
+    .replace(/\(\s*\)/g, "")
+    .replace(/\s{2,}/g, " ")
+    .replace(/^[a-z]/, c => c.toUpperCase())
+    .replace(/([.!?]\s+)([a-z])/g, (m, p, c) => p + c.toUpperCase());
+
+  // Break classic "A, B, and C" triples into messier shapes.
+  text = text.replace(
+    /\b([\w'-]+),\s+([\w'-]+),?\s+and\s+([\w'-]+)\b/gi,
+    (m, a, b, c, offset) => (offset % 3 === 0 ? `${a} and ${b} — plus ${c}` : `${a}, then ${b}, and ${c}`)
+  );
+  // Prefer ASCII hyphen over em dash we may have just introduced if quotes toggle wants it.
+  if ($("tQuotes").checked) text = text.replace(/\s*—\s*/g, ", ");
+
+  let sentences = splitSentences(text);
+  const out = [];
+  for (let i = 0; i < sentences.length; i++) {
+    let s = sentences[i].trim();
+    const n = wordCount(s);
+
+    // Split long uniform sentences at a mid conjunction/comma.
+    if (n >= 22) {
+      const cut = s.search(/,\s+(?:and|but|so|which|while|because|although)\s+/i);
+      if (cut > 20 && cut < s.length - 15) {
+        const left = s.slice(0, cut).replace(/[,:;]+$/, "").trim() + ".";
+        let right = s.slice(cut).replace(/^,\s*(?:and|but|so|which|while|because|although)\s+/i, "").trim();
+        right = right.charAt(0).toUpperCase() + right.slice(1);
+        if (!/[.!?]$/.test(right)) right += ".";
+        out.push(left, right);
+        continue;
+      }
+      const andCut = s.search(/\s+and\s+/i);
+      if (andCut > 18 && andCut < s.length - 12 && n >= 26) {
+        const left = s.slice(0, andCut).replace(/[,:;]+$/, "").trim() + ".";
+        let right = s.slice(andCut).replace(/^\s+and\s+/i, "").trim();
+        right = right.charAt(0).toUpperCase() + right.slice(1);
+        if (!/[.!?]$/.test(right)) right += ".";
+        out.push(left, right);
+        continue;
+      }
+    }
+    out.push(s);
+  }
+
+  // Merge pairs of tiny sentences occasionally to avoid a run of only short ones.
+  const merged = [];
+  for (let i = 0; i < out.length; i++) {
+    const a = out[i];
+    const b = out[i + 1];
+    if (
+      b &&
+      wordCount(a) <= 7 &&
+      wordCount(b) <= 9 &&
+      strength !== "light" &&
+      i % 2 === 0
+    ) {
+      const left = a.replace(/[.!?]+$/, "");
+      const right = b.charAt(0).toLowerCase() + b.slice(1);
+      merged.push(left + ", and " + right);
+      i++;
+    } else {
+      merged.push(a);
+    }
+  }
+
+  // If rhythm is still flat, split the longest sentence at a comma to create contrast.
+  if (strength === "heavy" || strength === "balanced") {
+    const lens = merged.map(wordCount);
+    const mean = lens.reduce((a, b) => a + b, 0) / (lens.length || 1);
+    const flat = lens.length >= 3 && lens.every(n => Math.abs(n - mean) < 6);
+    if (flat) {
+      let longest = 0;
+      for (let i = 1; i < merged.length; i++) if (wordCount(merged[i]) > wordCount(merged[longest])) longest = i;
+      const s = merged[longest];
+      const cut = s.indexOf(", ");
+      if (cut > 12 && cut < s.length - 12) {
+        const left = s.slice(0, cut).trim() + ".";
+        let right = s.slice(cut + 2).trim();
+        right = right.charAt(0).toUpperCase() + right.slice(1);
+        if (!/[.!?]$/.test(right)) right += ".";
+        merged.splice(longest, 1, left, right);
+      }
+    }
+  }
+
+  text = merged.join(" ").replace(/\s{2,}/g, " ");
+  return tidy(text);
+}
+
+function postProcess(out, strength) {
   out = stripHidden((out || "").trim());
-  // Strip accidental wrappers models sometimes add.
   out = out.replace(/^```(?:\w+)?\s*\n?([\s\S]*?)\n?```$/u, "$1").trim();
   if ((out.startsWith('"') && out.endsWith('"')) || (out.startsWith("'") && out.endsWith("'"))) {
     out = out.slice(1, -1).trim();
   }
-  if ($("tQuotes").checked) out = tidy(straighten(out));
+  // Strip common model preambles.
+  out = out.replace(/^(here(?:'s| is) (?:the )?(?:rewritten|humanized|revised)(?: version)?(?: of the text)?:?\s*)/i, "");
+  if ($("tAntiDetect") ? $("tAntiDetect").checked : true) {
+    out = forceHumanRhythm(out, strength || "heavy");
+  } else {
+    if ($("tQuotes").checked) out = tidy(straighten(out));
+    if ($("tWords").checked) { out = applyList(out, PHRASES); out = applyList(out, WORDS); }
+    if ($("tContract").checked) out = applyList(out, CONTRACTIONS);
+    out = tidy(out);
+  }
   return out;
 }
 
-function openaiMessages(userMsg) {
+function openaiMessages(userMsg, system) {
   return [
-    { role: "system", content: SYSTEM_PROMPT },
+    { role: "system", content: system || SYSTEM_PROMPT },
     { role: "user", content: userMsg },
   ];
 }
@@ -667,10 +823,9 @@ function extractOpenAIText(data) {
   return (out || "").trim();
 }
 
-// Free engine A: Puter — frontier models, free monthly allowance. May pop a free sign-in once.
-async function runPuter(model, userMsg) {
+async function runPuter(model, userMsg, system) {
   if (typeof puter === "undefined" || !puter.ai || !puter.ai.chat) throw new Error("puter-unavailable");
-  const resp = await puter.ai.chat(openaiMessages(userMsg), { model });
+  const resp = await puter.ai.chat(openaiMessages(userMsg, system), { model });
   const text = extractPuterText(resp);
   if (!text) throw new Error("puter-empty");
   return text;
@@ -684,15 +839,14 @@ function extractPuterText(resp) {
   return typeof resp.toString === "function" ? resp.toString() : "";
 }
 
-// Free engine B: LLM7 — OpenAI-compatible, CORS open, no key for turbo models.
-async function runLLM7(model, userMsg) {
+async function runLLM7(model, userMsg, system) {
   const res = await fetch("https://api.llm7.io/v1/chat/completions", {
     method: "POST",
     headers: { "content-type": "application/json" },
     body: JSON.stringify({
       model: model || "codestral-latest",
-      messages: openaiMessages(userMsg),
-      temperature: 0.7,
+      messages: openaiMessages(userMsg, system),
+      temperature: 0.95,
     }),
   });
   const data = await res.json().catch(() => ({}));
@@ -705,14 +859,14 @@ async function runLLM7(model, userMsg) {
   return out;
 }
 
-// Free engine C: Pollinations — anonymous, no login.
-async function runPollinations(model, userMsg) {
+async function runPollinations(model, userMsg, system) {
   const res = await fetch("https://text.pollinations.ai/openai", {
     method: "POST",
     headers: { "content-type": "application/json" },
     body: JSON.stringify({
       model: model || "openai",
-      messages: openaiMessages(userMsg),
+      temperature: 0.95,
+      messages: openaiMessages(userMsg, system),
     }),
   });
   if (!res.ok) throw new Error("Pollinations HTTP " + res.status);
@@ -722,17 +876,16 @@ async function runPollinations(model, userMsg) {
   return out;
 }
 
-async function runNoLogin(preferredModel, userMsg) {
+async function runNoLogin(preferredModel, userMsg, system) {
   const errors = [];
-  // Prefer LLM7 codestral; Pollinations is flaky but useful as backup.
   const attempts = preferredModel === "openai"
     ? [
-        ["Pollinations", () => runPollinations("openai", userMsg)],
-        ["LLM7", () => runLLM7("codestral-latest", userMsg)],
+        ["Pollinations", () => runPollinations("openai", userMsg, system)],
+        ["LLM7", () => runLLM7("codestral-latest", userMsg, system)],
       ]
     : [
-        ["LLM7", () => runLLM7(preferredModel || "codestral-latest", userMsg)],
-        ["Pollinations", () => runPollinations("openai", userMsg)],
+        ["LLM7", () => runLLM7(preferredModel || "codestral-latest", userMsg, system)],
+        ["Pollinations", () => runPollinations("openai", userMsg, system)],
       ];
   for (const [name, fn] of attempts) {
     try {
@@ -745,6 +898,19 @@ async function runNoLogin(preferredModel, userMsg) {
   throw new Error(errors.join(" · ") || "All no-login engines failed.");
 }
 
+async function rewriteOnce(engine, model, userMsg, system) {
+  if (engine === "nologin") {
+    return runNoLogin(model, userMsg, system);
+  }
+  try {
+    const out = await runPuter(model, userMsg, system);
+    return { out, via: "Puter" };
+  } catch (e) {
+    const fb = await runNoLogin("codestral-latest", userMsg, system);
+    return { out: fb.out, via: fb.via + " (fallback)" };
+  }
+}
+
 async function humanize() {
   const raw = input.value;
   if (!raw.trim()) { setStatus("Paste some text first.", "err"); return; }
@@ -754,6 +920,7 @@ async function humanize() {
   const strength = $("strength").value;
   const tone = $("tone").value;
   const userMsg = buildUserMessage(stripHidden(raw), strength, tone);
+  const twoPass = $("tTwoPass").checked && strength !== "light";
 
   const btn = $("humanizeBtn");
   btn.disabled = true;
@@ -761,28 +928,54 @@ async function humanize() {
   btn.innerHTML = '<span class="spinner"></span> Humanizing…';
 
   try {
-    let out, via;
-    if (engine === "nologin") {
-      setStatus("Rewriting for free (no login)…");
-      ({ out, via } = await runNoLogin(model, userMsg));
-    } else {
-      // Free — best quality: Puter first, then no-login chain.
+    setStatus(engine === "nologin" ? "Pass 1 · free no-login rewrite…" : "Pass 1 · free rewrite…");
+    let { out, via } = await rewriteOnce(engine, model, userMsg, SYSTEM_PROMPT);
+    out = postProcess(out, strength);
+    let best = out;
+    let bestScore = analyze(out).score;
+    let bestVia = via;
+
+    if (twoPass && out) {
+      setStatus("Pass 2 · anti-detect rhythm…");
       try {
-        setStatus("Rewriting for free (" + model + " via Puter)…");
-        out = await runPuter(model, userMsg);
-        via = "Puter";
+        const second = await rewriteOnce(
+          engine,
+          model,
+          buildPass2Message(out),
+          PASS2_PROMPT
+        );
+        const out2 = postProcess(second.out, strength);
+        const score2 = analyze(out2).score;
+        // Keep whichever pass looks less AI on our local signal check.
+        if (score2 <= bestScore) {
+          best = out2;
+          bestScore = score2;
+          bestVia = via + " → " + second.via;
+        } else {
+          bestVia = via + " (kept pass 1)";
+        }
       } catch (e) {
-        setStatus("Puter unavailable — trying free no-login engines…");
-        ({ out, via } = await runNoLogin("codestral-latest", userMsg));
-        via = via + " (fallback)";
+        // Keep pass-1 result if pass 2 fails.
       }
     }
-    out = postProcess(out);
+
+    out = best;
+    via = bestVia;
+
     if (!out) { setStatus("Empty result — try again.", "err"); return; }
     setOutput(out);
-    setStatus("Done · via " + via + " · $0.", "ok");
+    setStatus("Done · via " + via + " · local AI-tells " + bestScore + "/100 · $0. Re-check ZeroGPT; Humanize again on any yellow sentences.", "ok");
   } catch (e) {
-    setStatus("Couldn't rewrite: " + (e.message || e) + " — try ⚡ Quick clean (offline).", "err");
+    // Offline fallback: still apply local anti-detect rhythm.
+    try {
+      const local = postProcess(raw, "heavy");
+      if (local && local !== raw.trim()) {
+        setOutput(local);
+        setStatus("Network rewrite failed — applied local anti-detect clean instead. (" + (e.message || e) + ")", "err");
+        return;
+      }
+    } catch (_) {}
+    setStatus("Couldn't rewrite: " + (e.message || e) + " — try ⚡ Quick clean.", "err");
   } finally {
     btn.disabled = false;
     btn.innerHTML = label;
@@ -793,8 +986,8 @@ async function humanize() {
 $("cleanBtn").onclick = () => {
   const raw = input.value;
   if (!raw.trim()) { setStatus("Paste some text first.", "err"); return; }
-  setOutput(quickClean(raw));
-  setStatus("Cleaned locally — no data left your browser.", "ok");
+  setOutput(postProcess(raw, "balanced"));
+  setStatus("Cleaned locally with anti-detect rhythm — no data left your browser.", "ok");
 };
 $("humanizeBtn").onclick = humanize;
 

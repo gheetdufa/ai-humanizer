@@ -17,9 +17,10 @@ credits, no backend.
     "it's important to note", "in today's fast-paced world", …) for plain language.
   - Adds natural contractions.
 
-- **✨ Humanize (free).** A real LLM rewrite guided by research on what makes text read
-  as AI: it varies sentence rhythm (burstiness), breaks the "rule of three", drops hedges,
-  and rewrites in a natural human voice while preserving your meaning and facts. Engines:
+- **✨ Humanize (free, anti-detect).** A real LLM rewrite aimed at the signals ZeroGPT-style
+  detectors score: low perplexity (predictable words) and low burstiness (even sentence
+  length). Default settings run a heavy rewrite, a second anti-detect pass, and a local
+  rhythm cleaner that strips leftover AI glue and forces short/long sentence contrast.
   - **Free — best quality:** [Puter](https://puter.com) first (Claude / GPT-class models;
     a free Puter sign-in may appear once; each account gets a free monthly allowance),
     then automatic fallback to LLM7 → Pollinations.
