@@ -146,9 +146,6 @@
   details.settings { margin-top: 14px; border-top: 1px dashed var(--border); padding-top: 12px; }
   details.settings summary { cursor: pointer; font-size: 13px; color: var(--muted); font-weight: 600; user-select: none; }
   details.settings summary:hover { color: var(--text); }
-  .key-row { display: flex; flex-wrap: wrap; gap: 10px; align-items: flex-end; margin-top: 12px; }
-  .key-row .field { flex: 1; min-width: 240px; }
-  .key-row input { width: 100%; }
   .note { font-size: 12px; color: var(--muted); margin-top: 8px; line-height: 1.5; }
   .note a { color: var(--accent); }
 
@@ -222,9 +219,8 @@
       <div class="field">
         <label for="engine">Engine</label>
         <select id="engine">
-          <option value="free" selected>Free — best quality (no key)</option>
-          <option value="nologin">Free — no login (no key)</option>
-          <option value="key">Your own Claude key</option>
+          <option value="free" selected>Free — best quality</option>
+          <option value="nologin">Free — no login</option>
         </select>
       </div>
       <div class="field">
@@ -264,26 +260,17 @@
     </div>
     <div class="status" id="status"></div>
 
-    <details class="settings" id="keyDetails">
-      <summary>API key &amp; privacy · engine notes</summary>
-      <div class="key-row">
-        <div class="field">
-          <label for="apiKey">Anthropic API key</label>
-          <input type="password" id="apiKey" placeholder="sk-ant-…" autocomplete="off" spellcheck="false" />
-        </div>
-        <button class="act" id="saveKeyBtn">Save key</button>
-        <button class="mini" id="forgetKeyBtn">Forget</button>
-      </div>
+    <details class="settings" id="engineNotes">
+      <summary>How free engines work · privacy</summary>
       <p class="note">
-        <b>You do not need a key.</b> The two <b>Free</b> engines cost you nothing:
-        <b>Free — best quality</b> routes through <a href="https://puter.com" target="_blank" rel="noopener">Puter</a>
-        to reach GPT-4o / Claude-class models (a free Puter sign-in may pop up the first time), and it automatically
-        falls back to <b>Free — no login</b> (<a href="https://pollinations.ai" target="_blank" rel="noopener">Pollinations</a>,
-        no account at all) if Puter isn't available. <b>Quick clean</b> needs no network at all.<br/><br/>
-        The <b>Your own Claude key</b> engine is optional — it gives the most consistent quality and bills your own
-        Anthropic account. The key is stored only in this browser (localStorage) and is sent straight to Anthropic; it
-        never touches any server of mine. Get one at
-        <a href="https://console.anthropic.com/settings/keys" target="_blank" rel="noopener">console.anthropic.com</a>.
+        <b>No API key. No Anthropic bill.</b> Rewrites use free third-party model hosts from your browser — nothing
+        is sent to a server of mine.<br/><br/>
+        <b>Free — best quality</b> tries <a href="https://puter.com" target="_blank" rel="noopener">Puter</a> first
+        (Claude / GPT-class models; a free Puter sign-in may appear once; each Puter account gets a free monthly
+        allowance). If Puter is unavailable it automatically falls through to LLM7, then Pollinations.<br/><br/>
+        <b>Free — no login</b> skips Puter and uses <a href="https://llm7.io" target="_blank" rel="noopener">LLM7</a>
+        / <a href="https://pollinations.ai" target="_blank" rel="noopener">Pollinations</a> with no account.
+        <b>Quick clean</b> runs fully offline.
       </p>
     </details>
   </div>
@@ -294,8 +281,8 @@
   </div>
 
   <footer>
-    Free to use — no API key required. Quick clean runs fully offline; AI rewrites go to a free model provider (Puter or Pollinations) or, if you choose, straight to Anthropic with your own key.<br/>
-    Built as a static page — bookmark it and it's always here.
+    Free to use — no API key, no Anthropic credits. Quick clean runs offline; AI rewrites go through Puter / LLM7 / Pollinations from your browser.<br/>
+    Hosted on GitHub Pages — bookmark it and it's always here.
   </footer>
 </div>
 
@@ -583,7 +570,7 @@ function setStatus(msg, kind) {
   statusEl.innerHTML = msg || "";
 }
 
-/* ---------- AI rewrite via Anthropic (direct browser call) ---------- */
+/* ---------- AI rewrite (free providers only — no Anthropic) ---------- */
 const SYSTEM_PROMPT = `You are an expert editor who rewrites text so it reads as if a thoughtful person wrote it, erasing the statistical and stylistic fingerprints that mark text as AI-generated — while keeping the meaning, facts, and intent exactly.
 
 Rules:
@@ -620,19 +607,13 @@ function buildUserMessage(text, strength, tone) {
 
 const MODELS = {
   free: [
+    ["claude-sonnet-4-6", "Claude Sonnet — best"],
+    ["gpt-4o", "GPT-4o — strong"],
     ["gpt-4o-mini", "GPT-4o mini — fast"],
-    ["gpt-4o", "GPT-4o — best free"],
-    ["claude-sonnet-4", "Claude Sonnet 4"],
   ],
   nologin: [
-    ["openai-large", "OpenAI large — best"],
-    ["openai", "OpenAI — fast"],
-    ["mistral", "Mistral"],
-  ],
-  key: [
-    ["claude-opus-4-8", "Claude Opus 4.8 — best"],
-    ["claude-sonnet-5", "Claude Sonnet 5 — fast"],
-    ["claude-haiku-4-5", "Claude Haiku 4.5 — fastest"],
+    ["codestral-latest", "Codestral — best no-login"],
+    ["openai", "Pollinations GPT-OSS — backup"],
   ],
 };
 const engineSel = $("engine"), modelSel = $("model");
@@ -647,7 +628,13 @@ function populateModels() {
   }
 }
 (function initEngine(){
-  const saved = localStorage.getItem("hz_engine");
+  let saved = localStorage.getItem("hz_engine");
+  // Migrate away from the old paid Anthropic engine.
+  if (saved === "key" || (saved && !MODELS[saved])) {
+    saved = "free";
+    localStorage.setItem("hz_engine", "free");
+    localStorage.removeItem("hz_key");
+  }
   if (saved && MODELS[saved]) engineSel.value = saved;
   populateModels();
   engineSel.addEventListener("change", () => {
@@ -659,18 +646,31 @@ function populateModels() {
 // Always run the deterministic cleaner over model output so tells never survive.
 function postProcess(out) {
   out = stripHidden((out || "").trim());
+  // Strip accidental wrappers models sometimes add.
+  out = out.replace(/^```(?:\w+)?\s*\n?([\s\S]*?)\n?```$/u, "$1").trim();
+  if ((out.startsWith('"') && out.endsWith('"')) || (out.startsWith("'") && out.endsWith("'"))) {
+    out = out.slice(1, -1).trim();
+  }
   if ($("tQuotes").checked) out = tidy(straighten(out));
   return out;
 }
 
-// Free engine A: Puter — frontier models, no key. May pop a free sign-in the first time.
-async function runPuter(model, userMsg) {
-  if (typeof puter === "undefined" || !puter.ai || !puter.ai.chat) throw new Error("puter-unavailable");
-  const messages = [
+function openaiMessages(userMsg) {
+  return [
     { role: "system", content: SYSTEM_PROMPT },
     { role: "user", content: userMsg },
   ];
-  const resp = await puter.ai.chat(messages, { model });
+}
+
+function extractOpenAIText(data) {
+  const out = data && data.choices && data.choices[0] && data.choices[0].message && data.choices[0].message.content;
+  return (out || "").trim();
+}
+
+// Free engine A: Puter — frontier models, free monthly allowance. May pop a free sign-in once.
+async function runPuter(model, userMsg) {
+  if (typeof puter === "undefined" || !puter.ai || !puter.ai.chat) throw new Error("puter-unavailable");
+  const resp = await puter.ai.chat(openaiMessages(userMsg), { model });
   const text = extractPuterText(resp);
   if (!text) throw new Error("puter-empty");
   return text;
@@ -684,57 +684,65 @@ function extractPuterText(resp) {
   return typeof resp.toString === "function" ? resp.toString() : "";
 }
 
-// Free engine B: Pollinations — no login, no key.
+// Free engine B: LLM7 — OpenAI-compatible, CORS open, no key for turbo models.
+async function runLLM7(model, userMsg) {
+  const res = await fetch("https://api.llm7.io/v1/chat/completions", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({
+      model: model || "codestral-latest",
+      messages: openaiMessages(userMsg),
+      temperature: 0.7,
+    }),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    const msg = (data && data.error && data.error.message) || ("LLM7 HTTP " + res.status);
+    throw new Error(msg);
+  }
+  const out = extractOpenAIText(data);
+  if (!out) throw new Error("LLM7 returned no text.");
+  return out;
+}
+
+// Free engine C: Pollinations — anonymous, no login.
 async function runPollinations(model, userMsg) {
   const res = await fetch("https://text.pollinations.ai/openai", {
     method: "POST",
     headers: { "content-type": "application/json" },
     body: JSON.stringify({
-      model,
-      messages: [
-        { role: "system", content: SYSTEM_PROMPT },
-        { role: "user", content: userMsg },
-      ],
+      model: model || "openai",
+      messages: openaiMessages(userMsg),
     }),
   });
   if (!res.ok) throw new Error("Pollinations HTTP " + res.status);
   const data = await res.json();
-  const out = data && data.choices && data.choices[0] && data.choices[0].message && data.choices[0].message.content;
+  const out = extractOpenAIText(data);
   if (!out) throw new Error("Pollinations returned no text.");
   return out;
 }
 
-// Optional: bring-your-own Anthropic key.
-async function runClaudeKey(model, userMsg) {
-  const key = getKey();
-  if (!key) { const e = new Error("no-key"); e.code = "no-key"; throw e; }
-  const res = await fetch("https://api.anthropic.com/v1/messages", {
-    method: "POST",
-    headers: {
-      "content-type": "application/json",
-      "x-api-key": key,
-      "anthropic-version": "2023-06-01",
-      "anthropic-dangerous-direct-browser-access": "true",
-    },
-    body: JSON.stringify({
-      model,
-      max_tokens: 8192,
-      system: SYSTEM_PROMPT,
-      messages: [{ role: "user", content: userMsg }],
-    }),
-  });
-  const data = await res.json();
-  if (!res.ok || data.type === "error") {
-    const msg = (data && data.error && data.error.message) || ("HTTP " + res.status);
-    if (res.status === 401) throw new Error("Invalid API key — check it below.");
-    if (res.status === 429) throw new Error("Rate limited — wait a moment and retry.");
-    throw new Error(msg);
+async function runNoLogin(preferredModel, userMsg) {
+  const errors = [];
+  // Prefer LLM7 codestral; Pollinations is flaky but useful as backup.
+  const attempts = preferredModel === "openai"
+    ? [
+        ["Pollinations", () => runPollinations("openai", userMsg)],
+        ["LLM7", () => runLLM7("codestral-latest", userMsg)],
+      ]
+    : [
+        ["LLM7", () => runLLM7(preferredModel || "codestral-latest", userMsg)],
+        ["Pollinations", () => runPollinations("openai", userMsg)],
+      ];
+  for (const [name, fn] of attempts) {
+    try {
+      const out = await fn();
+      return { out, via: name };
+    } catch (e) {
+      errors.push(name + ": " + (e.message || e));
+    }
   }
-  if (data.stop_reason === "refusal") throw new Error("The model declined this text. Try Quick clean instead.");
-  const block = (data.content || []).find(b => b.type === "text");
-  const out = block ? block.text.trim() : "";
-  if (!out) throw new Error("Empty response — try again.");
-  return out;
+  throw new Error(errors.join(" · ") || "All no-login engines failed.");
 }
 
 async function humanize() {
@@ -754,61 +762,32 @@ async function humanize() {
 
   try {
     let out, via;
-    if (engine === "key") {
-      setStatus("Rewriting with your Claude key (" + model + ")…");
-      out = await runClaudeKey(model, userMsg);
-      via = "your Claude key";
-    } else if (engine === "nologin") {
+    if (engine === "nologin") {
       setStatus("Rewriting for free (no login)…");
-      out = await runPollinations(model, userMsg);
-      via = "Pollinations";
+      ({ out, via } = await runNoLogin(model, userMsg));
     } else {
-      // Free — best quality: try Puter, fall back to the no-login engine automatically.
+      // Free — best quality: Puter first, then no-login chain.
       try {
-        setStatus("Rewriting for free (" + model + ")…");
+        setStatus("Rewriting for free (" + model + " via Puter)…");
         out = await runPuter(model, userMsg);
         via = "Puter";
       } catch (e) {
-        setStatus("Puter unavailable — falling back to the no-login engine…");
-        out = await runPollinations("openai-large", userMsg);
-        via = "Pollinations (fallback)";
+        setStatus("Puter unavailable — trying free no-login engines…");
+        ({ out, via } = await runNoLogin("codestral-latest", userMsg));
+        via = via + " (fallback)";
       }
     }
     out = postProcess(out);
     if (!out) { setStatus("Empty result — try again.", "err"); return; }
     setOutput(out);
-    setStatus("Done · via " + via + ".", "ok");
+    setStatus("Done · via " + via + " · $0.", "ok");
   } catch (e) {
-    if (e && e.code === "no-key") {
-      setStatus("That engine needs your Anthropic key. Add it below, or switch Engine to a Free option.", "err");
-      $("keyDetails").open = true;
-      $("apiKey").focus();
-    } else {
-      setStatus("Couldn't rewrite: " + (e.message || e) + " — try another engine or ⚡ Quick clean.", "err");
-    }
+    setStatus("Couldn't rewrite: " + (e.message || e) + " — try ⚡ Quick clean (offline).", "err");
   } finally {
     btn.disabled = false;
     btn.innerHTML = label;
   }
 }
-
-/* ---------- API key storage ---------- */
-function getKey() { return ($("apiKey").value || "").trim(); }
-(function loadKey(){
-  const k = localStorage.getItem("hz_key");
-  if (k) $("apiKey").value = k;
-})();
-$("saveKeyBtn").onclick = () => {
-  const k = getKey();
-  if (!k) { setStatus("Nothing to save.", "err"); return; }
-  localStorage.setItem("hz_key", k);
-  setStatus("Key saved in this browser.", "ok");
-};
-$("forgetKeyBtn").onclick = () => {
-  localStorage.removeItem("hz_key");
-  $("apiKey").value = "";
-  setStatus("Key removed from this browser.", "ok");
-};
 
 /* ---------- wire up buttons ---------- */
 $("cleanBtn").onclick = () => {

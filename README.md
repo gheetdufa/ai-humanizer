@@ -1,12 +1,12 @@
 # Humanizer
 
 A single-page tool that makes AI-written text read like a person wrote it. It runs
-entirely in your browser and is hosted on GitHub Pages, so you can bookmark it and
-use it anytime.
+entirely in your browser and is hosted on GitHub Pages — no API keys, no Anthropic
+credits, no backend.
 
-## No key required
+**Use it here:** [https://gheetdufa.github.io/ai-humanizer/](https://gheetdufa.github.io/ai-humanizer/)
 
-The AI rewrite is **free** — you don't need an API key.
+## Free by default
 
 - **⚡ Quick clean (offline).** Instantly strips the machine fingerprints that
   detectors and readers flag, with no network at all:
@@ -19,40 +19,25 @@ The AI rewrite is **free** — you don't need an API key.
 
 - **✨ Humanize (free).** A real LLM rewrite guided by research on what makes text read
   as AI: it varies sentence rhythm (burstiness), breaks the "rule of three", drops hedges,
-  and rewrites in a natural human voice while preserving your meaning and facts. Pick an
-  engine:
-  - **Free — best quality:** routes through [Puter](https://puter.com) to reach
-    GPT-4o / Claude-class models (a free Puter sign-in may appear the first time), and
-    automatically falls back to the no-login engine if Puter is unavailable.
-  - **Free — no login:** routes through [Pollinations](https://pollinations.ai) with no
-    account at all.
-  - **Your own Claude key (optional):** the most consistent quality, billed to your own
-    Anthropic account.
+  and rewrites in a natural human voice while preserving your meaning and facts. Engines:
+  - **Free — best quality:** [Puter](https://puter.com) first (Claude / GPT-class models;
+    a free Puter sign-in may appear once; each account gets a free monthly allowance),
+    then automatic fallback to LLM7 → Pollinations.
+  - **Free — no login:** [LLM7](https://llm7.io) / [Pollinations](https://pollinations.ai)
+    with no account at all.
 
 An **AI-style signals** panel scores the text 0–100 and lists the specific tells it finds,
 so you can see what changed.
 
-## Optional: use your own Claude key
-
-For the most consistent quality you can plug in an Anthropic key:
-
-1. Get a key at [console.anthropic.com](https://console.anthropic.com/settings/keys).
-2. Open the site, set **Engine** to *Your own Claude key*, expand **API key & privacy**,
-   paste the key, and click **Save key**.
-
-Your key is stored only in your browser's `localStorage` and is sent directly to
-Anthropic — it never passes through any server of mine.
-
 ## How it's built
 
-One static `index.html` (no build step, no backend). The only dependency is the optional
-Puter script loaded from a CDN. Free rewrites call Puter or the Pollinations HTTP API from
-the browser (both send permissive CORS headers); the key path calls the Anthropic Messages
-API directly using the `anthropic-dangerous-direct-browser-access` header.
+One static `index.html` (no build step, no backend). Puter is loaded from a CDN; free
+rewrites call Puter, LLM7, or Pollinations from the browser (all send permissive CORS
+headers). Nothing is billed to Anthropic.
 
 ## Trade-offs, honestly
 
 Frontier-quality inference costs *someone* money, so "free" means routing through providers
-that absorb that cost (Puter's free tier, Pollinations' open models). Those are third-party
-services, so availability and exact quality depend on them. The **own-key** path is the way
-to guarantee a specific model and consistent output.
+that absorb that cost (Puter's free monthly allowance, LLM7 turbo models, Pollinations'
+anonymous tier). Availability and exact quality depend on those services. Quick clean
+always works offline as a deterministic backup.
